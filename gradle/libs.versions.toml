@@ -3,7 +3,6 @@ agp = "9.3.1"
 kotlin = "2.4.10"
 activity = "1.13.0"
 compose-material3 = "1.5.0-alpha24"
-compose-ui = "1.11.4"
 core = "1.19.0"
 core-splashscreen = "1.2.0"
 lifecycle = "2.11.0"
@@ -11,7 +10,6 @@ lifecycle = "2.11.0"
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
 androidx-compose-material3 = { module = "androidx.compose.material3:material3", version.ref = "compose-material3" }
-androidx-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling", version.ref = "compose-ui" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
 androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "core-splashscreen" }
 androidx-lifecycle-service = { module = "androidx.lifecycle:lifecycle-service", version.ref = "lifecycle" }
