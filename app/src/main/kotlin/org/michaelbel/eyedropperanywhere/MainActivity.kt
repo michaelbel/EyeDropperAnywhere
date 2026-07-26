@@ -38,7 +38,6 @@ class MainActivity: ComponentActivity() {
         projectionRequestOpen = false
         val data = result.data
         if (result.resultCode == RESULT_OK && data != null) {
-            moveTaskToBack(true)
             EyeDropperService.start(this, result.resultCode, data)
         } else {
             Toast.makeText(this, R.string.capture_denied, Toast.LENGTH_SHORT).show()
