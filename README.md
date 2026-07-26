@@ -9,8 +9,8 @@ apps. It adapts the AOSP reticle and sampling behavior while replacing privilege
 with APIs available to a regular installed application.
 
 <div>
-    <img src=".github/app-2.gif" width="33%" alt="App Video">
     <img src=".github/app-1.gif" width="33%" alt="App Video">
+    <img src=".github/app-2.gif" width="33%" alt="App Video">
 </div>
 
 ## How it works
