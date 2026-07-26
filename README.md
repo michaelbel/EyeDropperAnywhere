@@ -1,8 +1,17 @@
-# EyeDropperAnywhere
+EyeDropperAnywhere
+=
+
+[![workflow-status](https://img.shields.io/github/actions/workflow/status/michaelbel/EyeDropperAnywhere/ci.yml?style=for-the-badge&logo=github&labelColor=3F464F)](https://github.com/michaelbel/EyeDropperAnywhere/actions)
+[![last-commit](https://img.shields.io/github/last-commit/michaelbel/EyeDropperAnywhere?style=for-the-badge&logo=github&labelColor=3F464F)](https://github.com/michaelbel/EyeDropperAnywhere/commits)
 
 A public-API implementation of the Android 17 system EyeDropper that can pick a color over other
 apps. It adapts the AOSP reticle and sampling behavior while replacing privileged platform APIs
 with APIs available to a regular installed application.
+
+<div>
+    <img src=".github/app-1.gif" width="33%" alt="App Video">
+    <img src=".github/app-2.gif" width="33%" alt="App Video">
+</div>
 
 ## How it works
 
@@ -43,4 +52,4 @@ The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
 The touchscreen Compose UI, dimensions, 7×7 magnified patch, adaptive positioning and interaction
 model are ported from [AOSP EyeDropper, Android 17 branch](https://android.googlesource.com/platform/packages/apps/EyeDropper/+/refs/heads/android17-release/),
-licensed under Apache License 2.0. See `NOTICE` and source-file headers.
+licensed under Apache License 2.0. See source-file headers.
