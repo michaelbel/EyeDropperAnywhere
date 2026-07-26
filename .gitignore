@@ -1,9 +1,7 @@
-*.iml
-.gradle/
-.idea/
+.claude
+.gradle
+.idea/*
+!.idea/icon.svg
+.kotlin
+build
 local.properties
-build/
-**/build/
-captures/
-.DS_Store
-
