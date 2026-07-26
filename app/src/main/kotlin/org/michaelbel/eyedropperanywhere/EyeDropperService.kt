@@ -337,7 +337,6 @@ class EyeDropperService: LifecycleService(), SavedStateRegistryOwner {
         ColorRepository.save(this, color)
         val clipboard = getSystemService(ClipboardManager::class.java)
         clipboard.setPrimaryClip(ClipData.newPlainText("Color", hex))
-        Toast.makeText(this, hex, Toast.LENGTH_SHORT).show()
         finish()
     }
 
