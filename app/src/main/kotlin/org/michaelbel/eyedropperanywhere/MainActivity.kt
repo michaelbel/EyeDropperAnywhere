@@ -1,15 +1,12 @@
 package org.michaelbel.eyedropperanywhere
 
 import android.Manifest
-import android.app.Activity
 import android.app.StatusBarManager
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
 import android.media.projection.MediaProjectionManager
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
@@ -40,9 +37,9 @@ class MainActivity: ComponentActivity() {
     ) { result ->
         projectionRequestOpen = false
         val data = result.data
-        if (result.resultCode == Activity.RESULT_OK && data != null) {
-            EyeDropperService.start(this, result.resultCode, data)
+        if (result.resultCode == RESULT_OK && data != null) {
             moveTaskToBack(true)
+            EyeDropperService.start(this, result.resultCode, data)
         } else {
             Toast.makeText(this, R.string.capture_denied, Toast.LENGTH_SHORT).show()
         }
@@ -80,7 +77,7 @@ class MainActivity: ComponentActivity() {
                         if (serviceRunning) EyeDropperService.stop(this) else beginStartFlow()
                     },
                     onOpenOverlaySettings = ::openOverlaySettings,
-                    onAddTile = ::requestTile,
+                    onAddTile = ::requestTile
                 )
             }
         }
@@ -104,10 +101,7 @@ class MainActivity: ComponentActivity() {
     }
 
     private fun beginStartFlow() {
-        if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
             continueStartFlow()
@@ -126,10 +120,7 @@ class MainActivity: ComponentActivity() {
 
     private fun openOverlaySettings() {
         overlaySettingsLauncher.launch(
-            Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                "package:$packageName".toUri(),
-            )
+            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:$packageName".toUri(),)
         )
     }
 
@@ -140,10 +131,6 @@ class MainActivity: ComponentActivity() {
     }
 
     private fun requestTile() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            Toast.makeText(this, R.string.tile_add_failed, Toast.LENGTH_LONG).show()
-            return
-        }
         val statusBarManager = getSystemService(StatusBarManager::class.java)
         statusBarManager.requestAddTileService(
             ComponentName(this, EyeDropperTileService::class.java),

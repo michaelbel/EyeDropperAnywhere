@@ -7,7 +7,6 @@ import android.content.Intent
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
-import android.provider.Settings
 
 class EyeDropperTileService : TileService() {
     override fun onStartListening() {
@@ -24,13 +23,10 @@ class EyeDropperTileService : TileService() {
             return
         }
 
-        val target = if (Settings.canDrawOverlays(this)) {
-            Intent(this, CapturePermissionActivity::class.java)
-        } else {
-            Intent(this, MainActivity::class.java).putExtra(MainActivity.EXTRA_AUTO_START, true)
-        }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val target = Intent(this, CapturePermissionActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        if (Build.VERSION.SDK_INT >= 34) {
             val pendingIntent = PendingIntent.getActivity(
                 this,
                 0,
@@ -47,12 +43,10 @@ class EyeDropperTileService : TileService() {
     private fun updateTile() {
         qsTile?.apply {
             state = if (EyeDropperService.running.value) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                subtitle = if (EyeDropperService.running.value) {
-                    getString(R.string.notification_selecting)
-                } else {
-                    null
-                }
+            subtitle = if (EyeDropperService.running.value) {
+                getString(R.string.notification_selecting)
+            } else {
+                null
             }
             updateTile()
         }

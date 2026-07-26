@@ -16,10 +16,10 @@
  */
 package org.michaelbel.eyedropperanywhere.ui.touchscreen
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Region
-import android.os.Build
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import androidx.compose.animation.AnimatedVisibility
@@ -30,6 +30,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,6 +53,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -77,6 +79,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.nativePaint
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.AbstractComposeView
@@ -98,11 +101,13 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
+import androidx.core.graphics.get
 
 /**
  * Direct public-API port of packages/apps/EyeDropper's Android 17 TouchscreenReticle.
  * Only its privileged screenshot/window plumbing is replaced by MediaProjection and an app overlay.
  */
+@SuppressLint("ViewConstructor")
 internal class EyeDropperOverlayView(
     context: Context,
     private val screenshot: Bitmap,
@@ -110,8 +115,12 @@ internal class EyeDropperOverlayView(
     private val onCancel: () -> Unit,
 ) : AbstractComposeView(context) {
     private val touchRegion = Region()
+    @Volatile
+    private var samplePointSnapshot =
+        android.graphics.Point(screenshot.width / 2, screenshot.height / 2)
     val overlayWidth = screenshot.width
     val overlayHeight = screenshot.height
+    private var screenshotVersion by mutableIntStateOf(0)
     private var pointer by mutableStateOf(Offset(screenshot.width / 2f, screenshot.height / 2f))
     private val windowOrigin = Offset.Zero
     private var dragging by mutableStateOf(false)
@@ -128,14 +137,12 @@ internal class EyeDropperOverlayView(
 
     @Composable
     override fun Content() {
-        val colorScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val colorScheme =
             if (isSystemInDarkTheme()) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        } else {
-            MaterialTheme.colorScheme
-        }
         MaterialTheme(colorScheme = colorScheme) {
             TouchscreenReticle(
                 screenshot = screenshot,
+                screenshotVersion = screenshotVersion,
                 globalPointer = pointer,
                 windowOrigin = windowOrigin,
                 screenSize = IntSize(screenshot.width, screenshot.height),
@@ -149,7 +156,7 @@ internal class EyeDropperOverlayView(
     }
 
     private fun setTouchableBounds(bounds: Rect) {
-        if (!isAttachedToWindow || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (!isAttachedToWindow) return
         touchRegion.set(
             bounds.left.toInt().coerceIn(0, width),
             bounds.top.toInt().coerceIn(0, height),
@@ -157,6 +164,20 @@ internal class EyeDropperOverlayView(
             bounds.bottom.toInt().coerceIn(0, height),
         )
         rootSurfaceControl?.setTouchableRegion(touchRegion)
+    }
+
+    fun currentSamplePoint(): android.graphics.Point =
+        android.graphics.Point(samplePointSnapshot)
+
+    fun updateScreenshotSample(
+        left: Int,
+        top: Int,
+        width: Int,
+        height: Int,
+        pixels: IntArray,
+    ) {
+        screenshot.setPixels(pixels, 0, width, left, top, width, height)
+        screenshotVersion++
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
@@ -207,10 +228,13 @@ internal class EyeDropperOverlayView(
     }
 
     private fun movePointer(delta: Offset) {
-        pointer = Offset(
+        val updatedPointer = Offset(
             (pointer.x + delta.x).coerceIn(0f, (screenshot.width - 1).toFloat()),
             (pointer.y + delta.y).coerceIn(0f, (screenshot.height - 1).toFloat()),
         )
+        pointer = updatedPointer
+        samplePointSnapshot =
+            android.graphics.Point(updatedPointer.x.roundToInt(), updatedPointer.y.roundToInt())
     }
 }
 
@@ -253,6 +277,7 @@ private data class ReticleColors(
 @Composable
 private fun TouchscreenReticle(
     screenshot: Bitmap,
+    screenshotVersion: Int,
     globalPointer: Offset,
     windowOrigin: Offset,
     screenSize: IntSize,
@@ -263,7 +288,7 @@ private fun TouchscreenReticle(
     onTouchableBoundsChanged: (Rect) -> Unit,
 ) {
     val density = LocalDensity.current
-    val imageBitmap = remember(screenshot) { screenshot.asImageBitmap() }
+    val imageBitmap = remember(screenshot, screenshotVersion) { screenshot.asImageBitmap() }
     val dimensions = reticleDimensions(density)
     val colors = ReticleColors(
         container = MaterialTheme.colorScheme.surfaceVariant,
@@ -293,46 +318,49 @@ private fun TouchscreenReticle(
     }
 
     val shadowPaint = remember(dimensions, colors.shadow) {
-        Paint().asFrameworkPaint().apply {
+        Paint().nativePaint.apply {
             color = android.graphics.Color.BLACK
             setShadowLayer(dimensions.shadowRadius, 0f, dimensions.shadowDy, colors.shadow.toArgb())
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
-        Canvas(Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Canvas(
+            modifier = Modifier.fillMaxSize()
+        ) {
             drawReticleBackground(innerCenter, animatedAngle.value, dimensions, colors, shadowPaint)
             drawMagnifiedContent(imageBitmap, globalPointer, innerCenter, dimensions, colors)
             drawDraggableHandle(pointer, dimensions, colors, shadowPaint)
         }
 
         ArrowButtonsOverlay(
-                center = innerCenter,
-                arcRadius = ((dimensions.innerCircleSize + dimensions.ringWidth) / 2).roundToInt(),
-                tint = colors.outline,
-                onMove = { button, multiplier ->
-                    val delta = when (button) {
-                        DirectionButton.UP -> Offset(0f, -multiplier.toFloat())
-                        DirectionButton.DOWN -> Offset(0f, multiplier.toFloat())
-                        DirectionButton.LEFT -> Offset(-multiplier.toFloat(), 0f)
-                        DirectionButton.RIGHT -> Offset(multiplier.toFloat(), 0f)
-                    }
-                    onMovePointer(delta)
-                },
-            )
-            Controls(
-                showButtons = !dragging,
-                color = Color(screenshot.getPixel(globalPointer.x.roundToInt(), globalPointer.y.roundToInt())),
-                onApply = {
-                    onApply(screenshot.getPixel(globalPointer.x.roundToInt(), globalPointer.y.roundToInt()))
-                },
-                onCancel = onCancel,
-                outlineColor = colors.additionalOutline,
-                modifier = Modifier
-                    .align(AbsoluteAlignment.TopLeft)
-                    .onSizeChanged { controlsSize = it }
-                    .absoluteOffset { controlsOffset },
-            )
+            center = innerCenter,
+            arcRadius = ((dimensions.innerCircleSize + dimensions.ringWidth) / 2).roundToInt(),
+            tint = colors.outline,
+            onMove = { button, multiplier ->
+                val delta = when (button) {
+                    DirectionButton.UP -> Offset(0f, -multiplier.toFloat())
+                    DirectionButton.DOWN -> Offset(0f, multiplier.toFloat())
+                    DirectionButton.LEFT -> Offset(-multiplier.toFloat(), 0f)
+                    DirectionButton.RIGHT -> Offset(multiplier.toFloat(), 0f)
+                }
+                onMovePointer(delta)
+            }
+        )
+
+        Controls(
+            showButtons = !dragging,
+            color = Color(screenshot[globalPointer.x.roundToInt(), globalPointer.y.roundToInt()]),
+            onApply = { onApply(screenshot[globalPointer.x.roundToInt(), globalPointer.y.roundToInt()]) },
+            onCancel = onCancel,
+            outlineColor = colors.additionalOutline,
+            modifier = Modifier
+                .align(AbsoluteAlignment.TopLeft)
+                .onSizeChanged { controlsSize = it }
+                .absoluteOffset { controlsOffset }
+        )
     }
 }
 
@@ -348,7 +376,7 @@ private fun ArrowButtonsOverlay(
     val arrows = DirectionButton.entries
     Box(Modifier.fillMaxSize()) {
         arrows.forEach { direction ->
-            val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            val interactionSource = remember { MutableInteractionSource() }
             Box(
                 modifier = Modifier
                     .size(32.dp)
@@ -375,7 +403,7 @@ private fun ArrowButtonsOverlay(
                                 DirectionButton.RIGHT -> 90F
                             }
                         ),
-                    tint = tint,
+                    tint = tint
                 )
             }
         }
@@ -420,8 +448,12 @@ private fun Controls(
                 text = "#$hex",
                 style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace),
             )
-            AnimatedVisibility(showButtons) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            AnimatedVisibility(
+                visible = showButtons
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     FilledIconButton(
                         onClick = onCancel,
                         modifier = Modifier.padding(4.dp).size(40.dp),
@@ -429,9 +461,10 @@ private fun Controls(
                         Icon(
                             painter = painterResource(R.drawable.ic_close),
                             contentDescription = null,
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(20.dp)
                         )
                     }
+
                     FilledIconButton(
                         onClick = onApply,
                         modifier = Modifier.padding(4.dp).size(40.dp),
@@ -439,7 +472,7 @@ private fun Controls(
                         Icon(
                             painter = painterResource(R.drawable.ic_check),
                             contentDescription = null,
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -469,7 +502,7 @@ private fun DrawScope.drawReticleBackground(
             )
         }
         drawIntoCanvas { canvas ->
-            canvas.drawPath(path, Paint().apply { asFrameworkPaint().set(shadowPaint) })
+            canvas.drawPath(path, Paint().apply { nativePaint.set(shadowPaint) })
         }
         drawPath(path, colors.background)
         drawPath(path, colors.additionalOutline, style = Stroke(dimensions.additionalOutlineWidth))
@@ -510,7 +543,7 @@ private fun DrawScope.drawMagnifiedContent(
             topLeft = Offset(center.x - pixelSize / 2, center.y - pixelSize / 2),
             size = Size(pixelSize, pixelSize),
             cornerRadius = CornerRadius(dimensions.centerHighlightCornerRadius),
-            style = Stroke(dimensions.centerHighlightStrokeWidth),
+            style = Stroke(dimensions.centerHighlightStrokeWidth)
         )
     }
 }
@@ -526,7 +559,7 @@ private fun DrawScope.drawDraggableHandle(
     val outerOffset = dimensions.handleStrokeWidth / 2 + dimensions.additionalOutlineWidth / 2
     drawIntoCanvas { canvas ->
         canvas.drawCircle(center, radius, Paint().apply {
-            asFrameworkPaint().set(shadowPaint)
+            nativePaint.set(shadowPaint)
             style = PaintingStyle.Stroke
             strokeWidth = dimensions.handleStrokeWidth
         })
@@ -565,7 +598,7 @@ private fun getInnerCircleCenter(handle: Offset, dimensions: ReticleDimensions, 
     val radians = Math.toRadians(angle.toDouble())
     return Offset(
         handle.x + distance * cos(radians).toFloat(),
-        handle.y + distance * sin(radians).toFloat(),
+        handle.y + distance * sin(radians).toFloat()
     )
 }
 

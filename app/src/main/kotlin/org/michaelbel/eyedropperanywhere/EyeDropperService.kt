@@ -15,18 +15,18 @@ import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
-import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
-import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.core.content.ContextCompat
@@ -40,8 +40,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.michaelbel.eyedropperanywhere.ui.touchscreen.EyeDropperOverlayView
+import androidx.core.graphics.createBitmap
 
-class EyeDropperService : LifecycleService(), SavedStateRegistryOwner {
+class EyeDropperService: LifecycleService(), SavedStateRegistryOwner {
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
     override val savedStateRegistry: SavedStateRegistry
         get() = savedStateRegistryController.savedStateRegistry
@@ -53,15 +54,21 @@ class EyeDropperService : LifecycleService(), SavedStateRegistryOwner {
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
     private var captureThread: HandlerThread? = null
+    @Volatile
     private var overlayView: EyeDropperOverlayView? = null
     private var screenshot: Bitmap? = null
-    private val screenshotReady = AtomicBoolean(false)
+    @Volatile
+    private var captureState = CaptureState.IDLE
+    private var lastSampleCaptureTime = 0L
+    private var lastSamplePixels: IntArray? = null
+    private val sampleUpdatePending = AtomicBoolean(false)
     private val stopped = AtomicBoolean(false)
 
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
-            if (!screenshotReady.get() && !stopped.get()) {
-                failCapture()
+            if (stopped.get()) return
+            mainHandler.post {
+                if (captureState == CaptureState.WAITING_INITIAL) failCapture() else finish()
             }
         }
     }
@@ -104,20 +111,19 @@ class EyeDropperService : LifecycleService(), SavedStateRegistryOwner {
     private fun startCapture(intent: Intent) {
         if (running.value) return
         stopped.set(false)
-        screenshotReady.set(false)
+        captureState = CaptureState.WAITING_INITIAL
+        lastSampleCaptureTime = 0L
+        lastSamplePixels = null
+        sampleUpdatePending.set(false)
         _running.value = true
         EyeDropperTileService.requestRefresh(this)
 
         val notification = buildNotification(R.string.notification_preparing)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
+        startForeground(
+            NOTIFICATION_ID,
+            notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
+        )
 
         if (!Settings.canDrawOverlays(this)) {
             Toast.makeText(this, R.string.overlay_required, Toast.LENGTH_LONG).show()
@@ -126,12 +132,7 @@ class EyeDropperService : LifecycleService(), SavedStateRegistryOwner {
         }
 
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
-        val projectionData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra(EXTRA_PROJECTION_DATA, Intent::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra(EXTRA_PROJECTION_DATA)
-        }
+        val projectionData = intent.getParcelableExtra(EXTRA_PROJECTION_DATA, Intent::class.java)
         if (resultCode != Activity.RESULT_OK || projectionData == null) {
             failCapture()
             return
@@ -162,7 +163,7 @@ class EyeDropperService : LifecycleService(), SavedStateRegistryOwner {
         val captureHandler = Handler(thread.looper)
         val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
         imageReader = reader
-        reader.setOnImageAvailableListener({ source -> acquireScreenshot(source) }, captureHandler)
+        reader.setOnImageAvailableListener(::acquireScreenshot, captureHandler)
 
         try {
             virtualDisplay = projection?.createVirtualDisplay(
@@ -181,39 +182,22 @@ class EyeDropperService : LifecycleService(), SavedStateRegistryOwner {
     }
 
     private fun acquireScreenshot(reader: ImageReader) {
-        Log.d(TAG, "acquireScreenshot")
-        if (!screenshotReady.compareAndSet(false, true)) return
-        val image = reader.acquireLatestImage()
-        if (image == null) {
-            screenshotReady.set(false)
-            return
-        }
-
-        val captured = try {
-            val plane = image.planes.first()
-            val pixelStride = plane.pixelStride
-            val rowStride = plane.rowStride
-            val rowPadding = rowStride - pixelStride * image.width
-            val paddedWidth = image.width + rowPadding / pixelStride
-            val padded = Bitmap.createBitmap(paddedWidth, image.height, Bitmap.Config.ARGB_8888)
-            padded.copyPixelsFromBuffer(plane.buffer)
-            if (paddedWidth == image.width) {
-                padded
-            } else {
-                Bitmap.createBitmap(padded, 0, 0, image.width, image.height).also { padded.recycle() }
+        val image = reader.acquireLatestImage() ?: return
+        image.use { image ->
+            when (captureState) {
+                CaptureState.WAITING_INITIAL -> captureInitialFrame(image)
+                CaptureState.VISIBLE -> captureVisibleSample(image)
+                else -> Unit
             }
-        } catch (_: Exception) {
-            null
-        } finally {
-            image.close()
-            releaseProjection()
         }
+    }
 
-        if (captured == null) {
+    private fun captureInitialFrame(image: Image) {
+        val captured = image.toBitmap() ?: run {
             failCapture()
             return
         }
-
+        captureState = CaptureState.INITIAL_CAPTURED
         mainHandler.post {
             if (stopped.get()) {
                 captured.recycle()
@@ -221,6 +205,82 @@ class EyeDropperService : LifecycleService(), SavedStateRegistryOwner {
                 showOverlay(captured)
             }
         }
+    }
+
+    private fun captureVisibleSample(image: Image) {
+        val now = SystemClock.uptimeMillis()
+        if (
+            now - lastSampleCaptureTime < SAMPLE_INTERVAL_MS ||
+            sampleUpdatePending.get()
+        ) {
+            return
+        }
+        val view = overlayView ?: return
+        val point = view.currentSamplePoint()
+        val sample = image.readSample(point.x, point.y) ?: return
+        if (lastSamplePixels?.contentEquals(sample.pixels) == true) return
+        lastSampleCaptureTime = now
+        lastSamplePixels = sample.pixels
+        if (!sampleUpdatePending.compareAndSet(false, true)) return
+        mainHandler.post {
+            try {
+                if (!stopped.get() && overlayView === view) {
+                    view.updateScreenshotSample(
+                        left = sample.left,
+                        top = sample.top,
+                        width = sample.width,
+                        height = sample.height,
+                        pixels = sample.pixels,
+                    )
+                }
+            } finally {
+                sampleUpdatePending.set(false)
+            }
+        }
+    }
+
+    private fun Image.toBitmap(): Bitmap? = try {
+        val plane = planes.first()
+        val pixelStride = plane.pixelStride
+        val rowStride = plane.rowStride
+        val rowPadding = rowStride - pixelStride * width
+        val paddedWidth = width + rowPadding / pixelStride
+        val padded = createBitmap(paddedWidth, height)
+        plane.buffer.rewind()
+        padded.copyPixelsFromBuffer(plane.buffer)
+        if (paddedWidth == width) {
+            padded
+        } else {
+            Bitmap.createBitmap(padded, 0, 0, width, height).also { padded.recycle() }
+        }
+    } catch (exception: Exception) {
+        Log.e(TAG, "Unable to read captured frame", exception)
+        null
+    }
+
+    private fun Image.readSample(pointerX: Int, pointerY: Int): CapturedSample? {
+        val plane = planes.first()
+        val buffer = plane.buffer
+        val sampleWidth = SAMPLE_DIAMETER.coerceAtMost(width)
+        val sampleHeight = SAMPLE_DIAMETER.coerceAtMost(height)
+        val left = (pointerX - SAMPLE_RADIUS).coerceIn(0, width - sampleWidth)
+        val top = (pointerY - SAMPLE_RADIUS).coerceIn(0, height - sampleHeight)
+        val pixels = IntArray(sampleWidth * sampleHeight)
+        for (row in 0 until sampleHeight) {
+            val y = top + row
+            for (column in 0 until sampleWidth) {
+                val x = left + column
+                val offset = y * plane.rowStride + x * plane.pixelStride
+                if (offset + 3 >= buffer.limit()) return null
+                val red = buffer.get(offset).toInt() and 0xFF
+                val green = buffer.get(offset + 1).toInt() and 0xFF
+                val blue = buffer.get(offset + 2).toInt() and 0xFF
+                val alpha = buffer.get(offset + 3).toInt() and 0xFF
+                pixels[row * sampleWidth + column] =
+                    (alpha shl 24) or (red shl 16) or (green shl 8) or blue
+            }
+        }
+        return CapturedSample(left, top, sampleWidth, sampleHeight, pixels)
     }
 
     private fun showOverlay(bitmap: Bitmap) {
@@ -234,7 +294,7 @@ class EyeDropperService : LifecycleService(), SavedStateRegistryOwner {
         )
         view.setViewTreeLifecycleOwner(this)
         view.setViewTreeSavedStateRegistryOwner(this)
-        var overlayFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+        val overlayFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -250,23 +310,16 @@ class EyeDropperService : LifecycleService(), SavedStateRegistryOwner {
             x = view.initialWindowX
             y = view.initialWindowY
             title = "EyeDropperAnywhereOverlay"
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-                } else {
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-                }
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                setFitInsetsTypes(0)
-            }
+            layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            fitInsetsTypes = 0
         }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) configureLegacyFullScreen(view)
 
         try {
             windowManager.addView(view, params)
             Log.d(TAG, "overlay attached")
             overlayView = view
+            captureState = CaptureState.VISIBLE
             notificationManager.notify(
                 NOTIFICATION_ID,
                 buildNotification(R.string.notification_selecting),
@@ -305,6 +358,7 @@ class EyeDropperService : LifecycleService(), SavedStateRegistryOwner {
     private fun cleanup() {
         Log.d(TAG, "cleanup")
         if (!stopped.compareAndSet(false, true)) return
+        captureState = CaptureState.STOPPED
         overlayView?.let { view ->
             runCatching { windowManager.removeViewImmediate(view) }
         }
@@ -372,18 +426,13 @@ class EyeDropperService : LifecycleService(), SavedStateRegistryOwner {
             .build()
     }
 
-    @Suppress("DEPRECATION")
-    private fun configureLegacyFullScreen(view: View) {
-        view.systemUiVisibility =
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-    }
-
     companion object {
         private const val CHANNEL_ID = "eye_dropper"
         private const val NOTIFICATION_ID = 17
         private const val CAPTURE_DELAY_MS = 650L
+        private const val SAMPLE_RADIUS = 3
+        private const val SAMPLE_DIAMETER = SAMPLE_RADIUS * 2 + 1
+        private const val SAMPLE_INTERVAL_MS = 50L
         private const val TAG = "EyeDropperService"
         private const val ACTION_START = "org.michaelbel.eyedropperanywhere.START"
         private const val ACTION_STOP = "org.michaelbel.eyedropperanywhere.STOP"
@@ -405,6 +454,46 @@ class EyeDropperService : LifecycleService(), SavedStateRegistryOwner {
             context.startService(
                 Intent(context, EyeDropperService::class.java).setAction(ACTION_STOP)
             )
+        }
+    }
+
+    private enum class CaptureState {
+        IDLE,
+        WAITING_INITIAL,
+        INITIAL_CAPTURED,
+        VISIBLE,
+        STOPPED,
+    }
+
+    private data class CapturedSample(
+        val left: Int,
+        val top: Int,
+        val width: Int,
+        val height: Int,
+        val pixels: IntArray,
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+
+            other as CapturedSample
+
+            if (left != other.left) return false
+            if (top != other.top) return false
+            if (width != other.width) return false
+            if (height != other.height) return false
+            if (!pixels.contentEquals(other.pixels)) return false
+
+            return true
+        }
+
+        override fun hashCode(): Int {
+            var result = left
+            result = 31 * result + top
+            result = 31 * result + width
+            result = 31 * result + height
+            result = 31 * result + pixels.contentHashCode()
+            return result
         }
     }
 }
