@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dimensions copied verbatim from packages/apps/EyeDropper android17-release. -->
+<resources>
+    <dimen name="reticle_magnify_view_background_width">136dp</dimen>
+    <dimen name="reticle_background_large_corner_radius">80dp</dimen>
+    <dimen name="reticle_background_small_corner_radius">20dp</dimen>
+    <dimen name="reticle_magnify_view_inner_circle_size">96dp</dimen>
+    <dimen name="reticle_inner_circle_outline_width">12dp</dimen>
+    <dimen name="reticle_pixel_border_width">0.48dp</dimen>
+    <dimen name="reticle_center_pixel_highlight_corner_radius">2dp</dimen>
+    <dimen name="reticle_center_pixel_highlight_stroke_width">4dp</dimen>
+    <dimen name="reticle_magnify_view_outer_ring_width">23dp</dimen>
+    <dimen name="reticle_handle_size">40dp</dimen>
+    <dimen name="reticle_handle_stroke_width">3dp</dimen>
+    <dimen name="reticle_handle_inner_outline_width">3dp</dimen>
+    <dimen name="reticle_handle_view_margin_top">8dp</dimen>
+    <dimen name="reticle_shadow_radius">8dp</dimen>
+    <dimen name="reticle_shadow_dy">4dp</dimen>
+    <dimen name="control_panel_vertical_offset">10dp</dimen>
+    <dimen name="controls_height">48dp</dimen>
+    <dimen name="additional_outline_width">1dp</dimen>
+</resources>

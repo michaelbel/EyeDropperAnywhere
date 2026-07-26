@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EyeDropperAnywhere</string>
+    <string name="tile_label">EyeDropper</string>
+    <string name="screen_title">EyeDropper Anywhere</string>
+    <string name="start_title">Start eyedropper</string>
+    <string name="start_description">Confirm screen sharing</string>
+    <string name="stop_title">Stop eyedropper</string>
+    <string name="stop_description">Close the current system overlay</string>
+    <string name="add_tile_title">Add tile</string>
+    <string name="add_tile_description">Launch the picker without opening the app</string>
+    <string name="overlay_title">Display over other apps</string>
+    <string name="overlay_allowed">Allowed</string>
+    <string name="overlay_not_allowed">Permission required</string>
+    <string name="projection_explanation">A fresh Android screen-sharing confirmation is required for every pick. Secure content is redacted by the system.</string>
+    <string name="notification_channel">Screen color picker</string>
+    <string name="notification_preparing">Preparing a screen snapshot…</string>
+    <string name="notification_selecting">Select a color</string>
+    <string name="notification_stop">Stop</string>
+    <string name="capture_denied">Screen capture was cancelled</string>
+    <string name="overlay_required">Allow display over other apps to use EyeDropper</string>
+    <string name="capture_failed">Could not capture the screen</string>
+    <string name="tile_added">Tile added</string>
+    <string name="tile_add_failed">Open Quick Settings edit mode to add the tile</string>
+</resources>
