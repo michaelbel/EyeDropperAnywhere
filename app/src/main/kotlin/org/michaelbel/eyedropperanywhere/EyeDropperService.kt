@@ -43,6 +43,7 @@ import org.michaelbel.eyedropperanywhere.ui.touchscreen.EyeDropperOverlayView
 import androidx.core.graphics.createBitmap
 
 class EyeDropperService: LifecycleService(), SavedStateRegistryOwner {
+
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
     override val savedStateRegistry: SavedStateRegistry
         get() = savedStateRegistryController.savedStateRegistry
