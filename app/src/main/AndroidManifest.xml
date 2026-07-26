@@ -39,7 +39,7 @@
         <service
             android:name=".EyeDropperTileService"
             android:exported="true"
-            android:icon="@drawable/ic_tile_eyedropper"
+            android:icon="@drawable/ic_dropper_eye"
             android:label="@string/tile_label"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
 

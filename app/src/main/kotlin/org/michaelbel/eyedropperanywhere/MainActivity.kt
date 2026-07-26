@@ -134,7 +134,7 @@ class MainActivity: ComponentActivity() {
         statusBarManager.requestAddTileService(
             ComponentName(this, EyeDropperTileService::class.java),
             getString(R.string.tile_label),
-            Icon.createWithResource(this, R.drawable.ic_tile_eyedropper),
+            Icon.createWithResource(this, R.drawable.ic_dropper_eye),
             mainExecutor,
         ) { result ->
             val message = if (result == StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED) {

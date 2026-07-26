@@ -410,7 +410,7 @@ class EyeDropperService: LifecycleService(), SavedStateRegistryOwner {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         return Notification.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_tile_eyedropper)
+            .setSmallIcon(R.drawable.ic_dropper_eye)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(getString(textRes))
             .setContentIntent(openApp)
@@ -418,7 +418,7 @@ class EyeDropperService: LifecycleService(), SavedStateRegistryOwner {
             .setCategory(Notification.CATEGORY_SERVICE)
             .addAction(
                 Notification.Action.Builder(
-                    android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_tile_eyedropper),
+                    android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_dropper_eye),
                     getString(R.string.notification_stop),
                     stop,
                 ).build()
