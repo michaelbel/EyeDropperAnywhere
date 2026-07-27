@@ -10,7 +10,7 @@ private val gitCommitsCount: Int by lazy {
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(libs.versions.jdk.get().toInt())
 }
 
 android {
@@ -49,10 +49,22 @@ android {
     }
 }
 
+base {
+    archivesName.set("EyeDropperAnywhere-v${android.defaultConfig.versionName}(${android.defaultConfig.versionCode})")
+}
+
 dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.service)
+}
+
+tasks.register("printVersion") {
+    description = "Prints the current versionName and versionCode to stdout."
+    doLast {
+        println("VERSION_NAME=${android.defaultConfig.versionName}")
+        println("VERSION_CODE=${android.defaultConfig.versionCode}")
+    }
 }
