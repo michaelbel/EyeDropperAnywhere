@@ -7,7 +7,7 @@ import android.os.Build
 
 /** Requests the complete default display instead of Android's single-app capture chooser. */
 internal fun MediaProjectionManager.createDisplayCaptureIntent(): Intent =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+    if (Build.VERSION.SDK_INT >= 34) {
         createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay())
     } else {
         createScreenCaptureIntent()

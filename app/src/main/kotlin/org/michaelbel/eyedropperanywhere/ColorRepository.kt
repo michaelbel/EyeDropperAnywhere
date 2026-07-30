@@ -5,6 +5,7 @@ import java.util.Locale
 import androidx.core.content.edit
 
 internal object ColorRepository {
+
     private const val PREFS_NAME = "selected_color"
     private const val KEY_COLOR = "argb"
 

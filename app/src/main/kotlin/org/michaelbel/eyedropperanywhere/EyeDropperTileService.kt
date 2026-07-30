@@ -8,7 +8,8 @@ import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 
-class EyeDropperTileService : TileService() {
+class EyeDropperTileService: TileService() {
+
     override fun onStartListening() {
         super.onStartListening()
         updateTile()
@@ -43,11 +44,7 @@ class EyeDropperTileService : TileService() {
     private fun updateTile() {
         qsTile?.apply {
             state = if (EyeDropperService.running.value) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-            subtitle = if (EyeDropperService.running.value) {
-                getString(R.string.notification_selecting)
-            } else {
-                null
-            }
+            subtitle = if (EyeDropperService.running.value) getString(R.string.notification_selecting) else null
             updateTile()
         }
     }
