@@ -146,7 +146,7 @@ class MainActivity: ComponentActivity() {
         }
     }
 
-    companion object {
-        const val EXTRA_AUTO_START = "auto_start"
+    private companion object {
+        private const val EXTRA_AUTO_START = "auto_start"
     }
 }
